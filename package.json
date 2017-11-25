@@ -1,0 +1,19 @@
+{
+  "name": "udger-nodejs",
+  "version": "0.0.0",
+  "description": "udger sqlite3 databases parser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com-eviltik:eviltik/udger-nodejs"
+  },
+  "author": "eviltik",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "4.0.3",
+    "node-gyp": "3.6.2"
+  }
+}
