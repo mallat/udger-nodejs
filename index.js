@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const util = require('util');
+const debug = require('debug')('udger-nodejs');
 
 class UdgerParser {
     constructor(file) {
@@ -109,6 +110,8 @@ class UdgerParser {
 
         if (this.ua) {
 
+            debug("parse useragent string: START (useragent: " + this.ua + ")");
+
             let client_id = 0;
             let client_class_id = -1;
             let os_id = 0;
@@ -137,6 +140,8 @@ class UdgerParser {
             let crawler = q.get(this.ua);
 
             if (crawler) {
+
+                debug("parse useragent string: crawler found");
 
                 let client_class_id = 99;
                 ret['user_agent']['ua_class'] = 'Crawler';
@@ -170,6 +175,9 @@ class UdgerParser {
                 for (let client of q.iterate()) {
                     e = this.ua.match(this._phpRegexpToJs(client['regstring']));
                     if (e) {
+
+                        debug("parse useragent string: client found");
+
                         client_id = client['client_id'];
                         client_class_id = client['class_id'];
                         ret['user_agent']['ua_class'] = client['client_classification'];
@@ -200,7 +208,7 @@ class UdgerParser {
             }
 
             ////////////////////////////////////////////////
-            // search for os
+            // os
             ////////////////////////////////////////////////
             q = this.db.prepare(
                 "SELECT os_id,regstring,family,family_code,name,name_code,homepage,icon,icon_big,vendor,vendor_code,vendor_homepage " +
@@ -212,6 +220,9 @@ class UdgerParser {
             for (let os of q.iterate()) {
                 e = this.ua.match(this._phpRegexpToJs(os['regstring']));
                 if (e) {
+
+                    debug("parse useragent string: os found");
+
                     os_id = os['os_id'];
                     ret['user_agent']['os'] = os['name'];
                     ret['user_agent']['os_code'] = os['name_code'];
@@ -229,7 +240,7 @@ class UdgerParser {
             }
 
             ////////////////////////////////////////////////
-            // search for client/os relation
+            // client/os relation
             ////////////////////////////////////////////////
 
             if (os_id == 0 && client_id != 0) {
@@ -246,6 +257,9 @@ class UdgerParser {
                 let cor = q.get(client_id);
 
                 if (cor) {
+
+                    debug("parse useragent string: client os relation found");
+
                     os_id = cor['os_id'];
                     ret['user_agent']['os'] = cor['name'];
                     ret['user_agent']['os_code'] = cor['name_code'];
@@ -262,7 +276,7 @@ class UdgerParser {
             }
 
             ////////////////////////////////////////////////
-            // search for device
+            // device
             ////////////////////////////////////////////////
 
             q = this.db.prepare(
@@ -275,6 +289,9 @@ class UdgerParser {
             for (let device of q.iterate()) {
                 e = this.ua.match(this._phpRegexpToJs(device['regstring']));
                 if (e) {
+
+                    debug("parse useragent string: device found by regex");
+
                     //@todo: find a valid test to pass here ?
                     deviceclass_id = device['deviceclass_id'];
                     ret['user_agent']['device_class'] = device['name'];
@@ -297,6 +314,9 @@ class UdgerParser {
                 let r = q.get(client_class_id);
 
                 if (r) {
+
+                    debug("parse useragent string: device found by deviceclass");
+
                     deviceclass_id = r['deviceclass_id'];
                     ret['user_agent']['device_class'] = r['name'];
                     ret['user_agent']['device_class_code'] = r['name_code'];
@@ -305,6 +325,63 @@ class UdgerParser {
                     ret['user_agent']['device_class_info_url'] = "https://udger.com/resources/ua-list/device-detail?device=" + r['name'];
                 }
             }
+
+            ////////////////////////////////////////////////
+            // device marketname
+            ////////////////////////////////////////////////
+
+            if (ret['user_agent']['os_family_code']) {
+                q = this.db.prepare(
+                    "SELECT id,regstring FROM udger_devicename_regex " +
+                    "WHERE ("+
+                        "(os_family_code=? AND os_code='-all-') OR "+
+                        "(os_family_code=? AND os_code=?)" +
+                    ") " +
+                    "ORDER BY sequence"
+                );
+
+                let bindParams = [
+                    ret['user_agent']['os_family_code'],
+                    ret['user_agent']['os_family_code'],
+                    ret['user_agent']['os_code']
+                ];
+
+                let match;
+                let rId;
+                for (let r of q.iterate(bindParams)) {
+                    e = this.ua.match(this._phpRegexpToJs(r['regstring']));
+                    if (e[1]) {
+                        match = e[1].trim();
+                        rId = r["id"];
+                        break;
+                    }
+                }
+
+                let qC = this.db.prepare(
+                    "SELECT marketname,brand_code,brand,brand_url,icon,icon_big " +
+                    "FROM udger_devicename_list " +
+                    "JOIN udger_devicename_brand ON udger_devicename_brand.id=udger_devicename_list.brand_id " +
+                    "WHERE regex_id=? AND code=?"
+                );
+
+                let rC = qC.get(rId, match);
+
+                if (rC) {
+
+                    debug("parse useragent string: device marketname found");
+
+                    ret['user_agent']['device_marketname'] = rC['marketname'];
+                    ret['user_agent']['device_brand'] = rC['brand'];
+                    ret['user_agent']['device_brand_code'] = rC['brand_code'];
+                    ret['user_agent']['device_brand_homepage'] = rC['brand_url'];
+                    ret['user_agent']['device_brand_icon'] = rC['icon'];
+                    ret['user_agent']['device_brand_icon_big'] = rC['icon_big'];
+                    ret['user_agent']['device_brand_info_url'] = "https://udger.com/resources/ua-list/devices-brand-detail?brand=" + rC['brand_code'];
+                }
+            }
+
+            debug("parse useragent string: END, unset useragent string");
+            this.ua = '';
         }
 
         return ret;
